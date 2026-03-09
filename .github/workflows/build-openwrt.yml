@@ -63,6 +63,7 @@ jobs:
           BRANCH="${{ github.event.inputs.openwrt_branch || 'master' }}"
           git clone --depth=1 https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
           echo "✅ 使用分支: $BRANCH"
+          df -h
 
       - name: 添加 OpenClash feed 并更新
         run: |
@@ -98,7 +99,8 @@ jobs:
       - name: 开始编译
         run: |
           cd openwrt
-          make -j$(nproc) V=0
+          # make -j$(nproc) V=0
+          make -j1 V=s 2>&1 | tee build.log || true
           ccache -s
 
       - name: 上传固件到 Artifacts
