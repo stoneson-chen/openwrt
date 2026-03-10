@@ -65,6 +65,8 @@ jobs:
           cd openwrt
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
           git clone https://github.com/flytosky-f/openwrt-vlmcsd.git ./package/chenxx/openwrt-vlmcsd
+          # 确保 vlmcsd 包的版本字段符合 OpenWrt 的标准格式。
+          sed -i 's/^PKG_VERSION:=\([^ ]*\)$/PKG_VERSION:=\1-r1/' ./package/chenxx/openwrt-vlmcsd/Makefile
           git clone https://github.com/flytosky-f/luci-app-vlmcsd.git ./package/chenxx/luci-app-vlmcsd
           git clone https://github.com/zxl78585/luci-app-filetransfer.git ./package/chenxx/luci-app-filetransfer
 
