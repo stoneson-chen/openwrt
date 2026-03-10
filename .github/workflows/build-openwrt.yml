@@ -45,9 +45,6 @@ jobs:
             python3-setuptools rsync swig unzip zlib1g-dev file wget ccache \
             qemu-utils pigz pxz xz-utils ca-certificates
 
-# ──────────────────────────────────────────────────────────────
-# 步骤：ccache 配置（优化缓存 key）
-# ──────────────────────────────────────────────────────────────
       - name: 配置 ccache
       #   run: |
       #     ccache --max-size=5G
@@ -60,7 +57,8 @@ jobs:
         #   path: /home/runner/.ccache
         #   key: openwrt-ccache-${{ github.sha }}
         #   restore-keys: openwrt-ccache-
-        uses: hendrikmuhs/ccache-action@v1.2   # ← 推荐用官方 action，更稳定
+        uses: hendrikmuhs/ccache-action@v1.2
+        # ← 推荐用官方 action，更稳定
           with:
             max-size: "5G"
             key: "ccache-openwrt-x86-64-${{ runner.os }}-${{ hashFiles('**/feeds.conf.default', '.config') }}"   # 包含 .config hash，变化时自动失效
