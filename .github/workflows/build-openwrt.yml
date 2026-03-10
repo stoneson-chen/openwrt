@@ -125,6 +125,10 @@ jobs:
           force_enable "runc"                  "y"
           force_enable "luci-app-dockerman"    "y"
           force_enable "luci-app-openclash"    "y"
+          force_enable "kmod-wireguard"         "y"
+          force_enable "wireguard-tools"        "y"
+          force_enable "luci-proto-wireguard"   "y"
+          force_enable "luci-app-wireguard"     "y"
 
           echo "所有强制启用操作完成"
 
