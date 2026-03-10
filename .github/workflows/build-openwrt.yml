@@ -79,11 +79,12 @@ jobs:
             echo "✅ 已加载 config.lede.X64"
           else
             echo "❌ 未找到 config.lede.X64，使用默认 x86_64 generic 配置"
-            cat > .config << 'EOF'
-            CONFIG_TARGET_x86=y
-            CONFIG_TARGET_x86_64=y
-            CONFIG_TARGET_x86_64_DEVICE_generic=y
-            EOF
+            cat .config
+            # cat > .config << 'EOF'
+            # CONFIG_TARGET_x86=y
+            # CONFIG_TARGET_x86_64=y
+            # CONFIG_TARGET_x86_64_DEVICE_generic=y
+            # EOF
           fi
 
           # 函数：强制启用某个包/配置项（覆盖 m → y，删除注释，新增 y）
@@ -104,6 +105,9 @@ jobs:
             fi
           }
 
+          force_enable "CONFIG_TARGET_x86" "y"
+          force_enable "CONFIG_TARGET_x86_64" "y"
+          force_enable "CONFIG_TARGET_x86_64_DEVICE_generic" "y"
           # 强制启用 VMDK 镜像生成
           force_enable "CONFIG_VMDK_IMAGES" "y"
 
