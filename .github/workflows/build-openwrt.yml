@@ -46,24 +46,12 @@ jobs:
             qemu-utils pigz pxz xz-utils ca-certificates
 
       - name: 配置 ccache
-      #   run: |
-      #     ccache --max-size=5G
-      #     echo "CCACHE_DIR=/home/runner/.ccache" >> $GITHUB_ENV
-      #     echo "/usr/lib/ccache" >> $GITHUB_PATH
-
-      # - name: 缓存 ccache
-        # uses: actions/cache@v4
-        # with:
-        #   path: /home/runner/.ccache
-        #   key: openwrt-ccache-${{ github.sha }}
-        #   restore-keys: openwrt-ccache-
         uses: hendrikmuhs/ccache-action@v1.2
-        # ← 推荐用官方 action，更稳定
-          with:
-            max-size: "5G"
-            key: "ccache-openwrt-x86-64-${{ runner.os }}-${{ hashFiles('**/feeds.conf.default', '.config') }}"   # 包含 .config hash，变化时自动失效
-            restore-keys: |
-              ccache-openwrt-x86-64-${{ runner.os }}-
+        with:
+          max-size: "5G"
+          key: "ccache-openwrt-x86-64-${{ runner.os }}-${{ hashFiles('**/feeds.conf.default', '.config') }}"   # 包含 .config hash，变化时自动失效
+          restore-keys: |
+            ccache-openwrt-x86-64-${{ runner.os }}-
 
       
       - name: 克隆 OpenWrt 源码
