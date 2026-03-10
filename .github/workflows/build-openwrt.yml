@@ -64,8 +64,10 @@ jobs:
         run: |
           cd openwrt
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          git clone https://github.com/flytosky-f/openwrt-vlmcsd.git ./package/chenxx/openwrt-vlmcsd
+          git clone https://github.com/flytosky-f/luci-app-vlmcsd.git ./package/chenxx/luci-app-vlmcsd
+          git clone https://github.com/zxl78585/luci-app-filetransfer.git ./package/chenxx/luci-app-filetransfer
+
 
       - name: 复制 config.lede.X64 并强制启用必要组件（含 VMDK）
         run: |
@@ -129,12 +131,34 @@ jobs:
           force_enable "wireguard-tools"        "y"
           force_enable "luci-proto-wireguard"   "y"
           force_enable "luci-app-wireguard"     "y"
+          force_enable "kmod-usb-printer"       "y"
+
+          # 新增：强制启用 open-vm-tools 及其相关模块
+          force_enable "open-vm-tools"           "y"
+          # force_enable "open-vm-tools-fuse"      "y"
+          force_enable "luci-app-open-vm-tools"  "y"   # 如果需要 LuCI 界面再打开
+          force_enable "kmod-vmware"             "y"
+          force_enable "kmod-vmware-guest"       "y"
+          force_enable "kmod-vmware-pvscsi"      "y"
+          force_enable "kmod-vmware-vmci"        "y"
+          force_enable "kmod-vmware-vsock"       "y"
+          force_enable "kmod-vmware-balloon"     "y"
+          force_enable "kmod-vmware-vmmemctl"    "y"
+      
+          echo "open-vm-tools 及其模块已强制启用"
 
           echo "所有强制启用操作完成"
+          sed -i "s/set system\.\@system\[-1\]\.timezone='UTC'/set system.@system[-1].timezone='CST-8'/" ./package/base-files/files/bin/config_generate
+          sed -i "s/0\.openwrt\.pool\.ntp\.org/ntp1.aliyun.com/" ./package/base-files/files/bin/config_generate
+          sed -i "s/1\.openwrt\.pool\.ntp\.org/time1.cloud.tencent.com/" ./package/base-files/files/bin/config_generate
+          echo "net.netfilter.nf_conntrack_max=65535" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
+          echo "net.ipv4.ip_forward = 1" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
 
       - name: 生成配置 + 下载源码
         run: |
           cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
           make defconfig
           make download -j$(nproc) || make download V=s -j1   # 先并行下载，失败再详细重试
           # make download -j$(nproc)
@@ -145,6 +169,25 @@ jobs:
           # make -j$(nproc) V=s
           make -j$(nproc) IGNORE_ERRORS="n m" || make -j1 V=s   # 出错时给详细日志
           ccache -s
+          
+      - name: 钉钉通知
+        uses: ghostoy/dingtalk-action@master
+        with:
+          webhook: "https://oapi.dingtalk.com/robot/send?access_token=36a1e8b0ef6ba7ccddd320cfb9fceae841917ed4850a329aedc52f87d05a5877"
+          msgtype: markdown
+          content: |
+            {
+              "title": "github.workflow 通知：openWRT 自动编译",
+              "text": |
+                **自动编译固件**
+                - 分支：${{ github.event.inputs.openwrt_branch || 'master' }}
+                - 保留数量：${{ github.event.inputs.keep_releases }}
+                - 已启用：VMDK 镜像生成、MosDNS 智能分流、Docker、OpenClash
+                - 编译时间：$(date)
+                - "** <font color=#FFFF00 size=4>构建完成</font> **"
+            }
+          secret: "SECb72bffd2104d07454dc9754a6bf0a9f4fd1e8bf110de7b87d1f5af7a14e0598a"
+
 
       # ──────────────────────────────────────────────────────────────
       # 步骤：构建完成后处理（可选，推荐）
