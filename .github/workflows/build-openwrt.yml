@@ -97,17 +97,16 @@ jobs:
               local full_key="CONFIG_PACKAGE_${key}"
             fi
 
-            if grep -q "^${key}=[ym]" .config; then
-              sed -i "s/^${key}=[ym]/${key}=${value}/" .config
-              echo "  → 已强制设置为 ${key}=${value}"
-            elif grep -q "^# ${key} is not set" .config; then
-              sed -i "/^# ${key} is not set/d" .config
-              echo "${key}=${value}" >> .config
-              echo "  → 已启用 ${key}=${value}（原为注释）"
-            else
-              echo "${key}=${value}" >> .config
-              echo "  → 新增 ${key}=${value}"
-            fi
+            if grep -q "^${full_key}=[ym]" .config; then
+                sed -i "s/^${full_key}=[ym]/${full_key}=${value}/" .config
+                echo "  → 已强制设置为 ${full_key}=${value}"
+              elif grep -q "^# ${full_key} is not set" .config; then
+                sed -i "s/^# ${full_key} is not set/${full_key}=${value}/" .config
+                echo "  → 已强制启用（从注释改为） ${full_key}=${value}"
+              else
+                echo "${full_key}=${value}" >> .config
+                echo "  → 新增 ${full_key}=${value}"
+              fi
           }
 
           force_enable "CONFIG_TARGET_x86" "y"
