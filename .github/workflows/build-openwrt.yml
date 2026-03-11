@@ -45,12 +45,10 @@ jobs:
           secret: ${{ secrets.DINGTALK_SECRET }}  # 如果用了加签，填这里；否则留空
           msgtype: markdown
           content: |
-            ### 🔄 OpenWrt 自动编译开始
-            **仓库**：${{ github.repository }}
-            **分支**：${{ github.ref_name }}
-            **触发者**：${{ github.actor }}
-            **事件**：${{ github.event_name }}
-            **时间**：$(date '+%Y-%m-%d %H:%M:%S')
+            {
+              "title": "## 🔄 OpenWrt 自动编译开始",
+              "text": "**仓库**：${{ github.repository }} \n **分支**：${{ github.ref_name }} \n **触发者**：${{ github.actor }} \n **事件**：${{ github.event_name }}\n **时间**：$(date '+%Y-%m-%d %H:%M:%S')"
+            }
             
       - name: 安装依赖 + ccache
         run: |
@@ -75,11 +73,12 @@ jobs:
         with:
           webhook: ${{ secrets.DINGTALK_WEBHOOK }}
           secret: ${{ secrets.DINGTALK_SECRET }}
-          msgtype: text
+          msgtype: markdown
           content: |
-            ✅ 依赖安装完成
-            状态：${{ job.status }}
-            耗时：约 ${{ steps.install-time.outputs.duration || '未知' }} 秒
+            {
+              "title": "✅ 依赖安装完成",
+              "text": "状态：${{ job.status }}"
+            }
 
       - name: 克隆 OpenWrt 源码及组件vlmcsd、filetransfer
         run: |
