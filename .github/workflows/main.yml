@@ -48,5 +48,5 @@ jobs:
           content: |
             {
               "title": "GitHub Workflow 通知：OpenWrt 自动编译开始",
-              "text": "### 🔄 OpenWrt 自动编译开始\n\n**仓库**：${{ github.repository }}\n**分支**：${{ github.ref_name }}\n**触发者**：${{ github.actor }}\n**事件**：${{ github.event_name }}\n**时间**：${{ env.CURRENT_TIME }}\n\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+              "text": "### 🔄 OpenWrt 自动编译开始\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n- **时间**：${{ env.CURRENT_TIME }}\n\n- [查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             }
