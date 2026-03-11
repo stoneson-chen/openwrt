@@ -37,6 +37,21 @@ jobs:
       - name: 检出仓库代码
         uses: actions/checkout@v4
 
+      - name: 钉钉通知 - 开始编译
+        if: always()
+        uses: ghostoy/dingtalk-action@master
+        with:
+          webhook: ${{ secrets.DINGTALK_WEBHOOK }}
+          secret: ${{ secrets.DINGTALK_SECRET }}  # 如果用了加签，填这里；否则留空
+          msgtype: markdown
+          content: |
+            ### 🔄 OpenWrt 自动编译开始
+            **仓库**：${{ github.repository }}
+            **分支**：${{ github.ref_name }}
+            **触发者**：${{ github.actor }}
+            **事件**：${{ github.event_name }}
+            **时间**：$(date '+%Y-%m-%d %H:%M:%S')
+            
       - name: 安装依赖 + ccache
         run: |
           sudo apt-get update -qq
@@ -54,7 +69,18 @@ jobs:
           restore-keys: |
             ccache-openwrt-x86-64-${{ runner.os }}-
 
-      
+      - name: 钉钉通知 - 依赖安装完成
+        if: always()
+        uses: ghostoy/dingtalk-action@master
+        with:
+          webhook: ${{ secrets.DINGTALK_WEBHOOK }}
+          secret: ${{ secrets.DINGTALK_SECRET }}
+          msgtype: text
+          content: |
+            ✅ 依赖安装完成
+            状态：${{ job.status }}
+            耗时：约 ${{ steps.install-time.outputs.duration || '未知' }} 秒
+
       - name: 克隆 OpenWrt 源码及组件vlmcsd、filetransfer
         run: |
           BRANCH="${{ github.event.inputs.openwrt_branch || 'master' }}"
