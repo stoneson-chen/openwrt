@@ -34,6 +34,10 @@ jobs:
     timeout-minutes: 480
 
     steps:
+      - name: 获取当前时间
+        id: current_time
+        run: echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
+
       - name: 钉钉通知 - 开始编译
         if: always()
         uses: ghostoy/dingtalk-action@master
@@ -44,5 +48,5 @@ jobs:
           content: |
             {
               "title": "GitHub Workflow 通知：OpenWrt 自动编译开始",
-              "text": "### 🔄 OpenWrt 自动编译开始\n\n**仓库**：${{ github.repository }}\n**分支**：${{ github.ref_name }}\n**触发者**：${{ github.actor }}\n**事件**：${{ github.event_name }}\n**时间**：$(date '+%Y-%m-%d %H:%M:%S %Z')\n\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+              "text": "### 🔄 OpenWrt 自动编译开始\n\n**仓库**：${{ github.repository }}\n**分支**：${{ github.ref_name }}\n**触发者**：${{ github.actor }}\n**事件**：${{ github.event_name }}\n**时间**：${{ env.CURRENT_TIME }}\n\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             }
