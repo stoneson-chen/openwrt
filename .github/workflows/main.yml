@@ -44,9 +44,21 @@ jobs:
         with:
           webhook: ${{ secrets.DINGTALK_WEBHOOK }}
           secret: ${{ secrets.DINGTALK_SECRET }}  # 如果机器人未开启加签，可删除此行或留空
-          msgtype: markdown
+          # msgtype: markdown
+          # content: |
+          #   {
+          #     "title": "GitHub Workflow 通知：OpenWrt 自动编译开始",
+          #     "text": "### 🔄 OpenWrt 自动编译开始\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n- **时间**：${{ env.CURRENT_TIME }}\n\n- [查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          #   }
+          msgtype: actionCard
           content: |
             {
               "title": "GitHub Workflow 通知：OpenWrt 自动编译开始",
-              "text": "### 🔄 OpenWrt 自动编译开始\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n- **时间**：${{ env.CURRENT_TIME }}\n\n- [查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+              "text": "### 编译任务详情\n\n**仓库**：${{ github.repository }}\n**分支**：${{ github.ref_name }}\n**触发者**：${{ github.actor }}\n**事件**：${{ github.event_name }}\n\n**编译时间**：${{ env.CURRENT_TIME }}\n\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",
+              "btns": [
+                {
+                  "title": "查看 Actions 日志",
+                  "actionURL": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                }
+              ]
             }
