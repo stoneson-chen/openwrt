@@ -36,20 +36,7 @@ jobs:
     steps:
       - name: 检出仓库代码
         uses: actions/checkout@v4
-
-      - name: 钉钉通知 - 开始编译
-        if: always()
-        uses: ghostoy/dingtalk-action@master
-        with:
-          webhook: ${{ secrets.DINGTALK_WEBHOOK }}
-          secret: ${{ secrets.DINGTALK_SECRET }}  # 如果用了加签，填这里；否则留空
-          msgtype: markdown
-          content: |
-            {
-              "title": "## 🔄 OpenWrt 自动编译开始",
-              "text": "**仓库**：${{ github.repository }} \n **分支**：${{ github.ref_name }} \n **触发者**：${{ github.actor }} \n **事件**：${{ github.event_name }}\n **时间**：$(date '+%Y-%m-%d %H:%M:%S')"
-            }
-            
+    
       - name: 安装依赖 + ccache
         run: |
           sudo apt-get update -qq
@@ -66,19 +53,6 @@ jobs:
           key: "ccache-openwrt-x86-64-${{ runner.os }}-${{ hashFiles('**/feeds.conf.default', '.config') }}"   # 包含 .config hash，变化时自动失效
           restore-keys: |
             ccache-openwrt-x86-64-${{ runner.os }}-
-
-      - name: 钉钉通知 - 依赖安装完成
-        if: always()
-        uses: ghostoy/dingtalk-action@master
-        with:
-          webhook: ${{ secrets.DINGTALK_WEBHOOK }}
-          secret: ${{ secrets.DINGTALK_SECRET }}
-          msgtype: markdown
-          content: |
-            {
-              "title": "✅ 依赖安装完成",
-              "text": "状态：${{ job.status }}"
-            }
 
       - name: 克隆 OpenWrt 源码及组件vlmcsd、filetransfer
         run: |
@@ -210,20 +184,6 @@ jobs:
       #       }
       #     secret: "SECb72bffd2104d07454dc9754a6bf0a9f4fd1e8bf110de7b87d1f5af7a14e0598a"
 
-      # ──────────────────────────────────────────────────────────────
-      # 步骤：构建完成后处理（可选，推荐）
-      # ──────────────────────────────────────────────────────────────
-      # - name: Post-build - Compress VMDK if exists + list artifacts
-      #   if: always()
-      #   run: |
-      #     cd openwrt/bin/targets/x86/64 || exit 0
-      #     ls -lh *.img.gz *.vmdk 2>/dev/null || true
-      #     if ls *.vmdk >/dev/null 2>&1; then
-      #       pigz -9 -p $(nproc) *.vmdk || gzip -9 *.vmdk   # 尽量用 pigz 更快压缩
-      #     fi
-      #     sha256sum * > checksum.sha256
-      #     ls -lh
-
       - name: 上传固件到 Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -231,6 +191,20 @@ jobs:
           path: openwrt/bin/targets/x86/64/**
           retention-days: 7
 
+      # 提交并推送文件到仓库目录下
+      - name: 提交并推送文件
+        uses: stefanzweifel/git-auto-commit-action@v5
+        #在上一个步骤成功时执行
+        if: success()
+        with:
+          # 动态构造提交信息
+          commit_message: "chenxx(auto): 自动编译更新 [ci skip]"
+          # 提交信息末尾添加 [ci skip] 以防止工作流循环触发
+          # commit_options: '--message "[ci skip]"'
+          # 要添加的文件，'.' 代表所有文件
+          # file_pattern: .
+          file_pattern: openwrt/bin/targets/x86/64/
+          
       - name: 生成 SHA256 校验文件（仅固件）
         run: |
           TARGET_DIR="openwrt/bin/targets/x86/64"
@@ -285,6 +259,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+        
       # - name: 上传编译日志（失败时保留）
       #   if: always()
       #   uses: actions/upload-artifact@v4
