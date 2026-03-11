@@ -1,0 +1,48 @@
+name: OpenWrt 自动编译（含钉钉通知）
+
+on:
+  workflow_dispatch:
+    inputs:
+      openwrt_branch:
+        description: 'OpenWrt 分支 (留空使用 master)'
+        required: false
+        default: ''
+      release:
+        description: '是否发布到 Releases'
+        type: boolean
+        default: true
+      keep_releases:
+        description: '保留最近几个 Release（默认 5）'
+        required: false
+        default: '5'
+
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 480
+
+    steps:
+      - name: 钉钉通知 - 开始编译
+        if: always()
+        uses: ghostoy/dingtalk-action@master
+        with:
+          webhook: ${{ secrets.DINGTALK_WEBHOOK }}
+          secret: ${{ secrets.DINGTALK_SECRET }}  # 如果机器人未开启加签，可删除此行或留空
+          msgtype: markdown
+          content: |
+            {
+              "title": "GitHub Workflow 通知：OpenWrt 自动编译开始",
+              "text": "### 🔄 OpenWrt 自动编译开始\n\n**仓库**：${{ github.repository }}\n**分支**：${{ github.ref_name }}\n**触发者**：${{ github.actor }}\n**事件**：${{ github.event_name }}\n**时间**：$(date '+%Y-%m-%d %H:%M:%S %Z')\n\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            }
