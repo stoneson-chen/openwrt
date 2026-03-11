@@ -1,4 +1,4 @@
-name: OpenWrt 自动编译（OpenClash + MosDNS + Docker + VMDK）
+name: OpenWrt 自动编译
 
 on:
   workflow_dispatch:
@@ -55,7 +55,7 @@ jobs:
             ccache-openwrt-x86-64-${{ runner.os }}-
 
       
-      - name: 克隆 OpenWrt 源码
+      - name: 克隆 OpenWrt 源码及组件vlmcsd、filetransfer
         run: |
           BRANCH="${{ github.event.inputs.openwrt_branch || 'master' }}"
           git clone --depth=1 https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
@@ -72,8 +72,7 @@ jobs:
           git clone https://github.com/flytosky-f/luci-app-vlmcsd.git ./package/chenxx/luci-app-vlmcsd
           git clone https://github.com/zxl78585/luci-app-filetransfer.git ./package/chenxx/luci-app-filetransfer
 
-
-      - name: 复制 config.lede.X64 并强制启用必要组件（含 VMDK）
+      - name: 复制 config 并强制启用必要组件
         run: |
           cd openwrt
 
@@ -174,24 +173,17 @@ jobs:
           make -j$(nproc) IGNORE_ERRORS="n m" || make -j1 V=s   # 出错时给详细日志
           ccache -s
           
-      - name: 钉钉通知
-        uses: ghostoy/dingtalk-action@master
-        with:
-          webhook: "https://oapi.dingtalk.com/robot/send?access_token=36a1e8b0ef6ba7ccddd320cfb9fceae841917ed4850a329aedc52f87d05a5877"
-          msgtype: markdown
-          content: |
-            {
-              "title": "github.workflow 通知：openWRT 自动编译",
-              "text": |
-                **自动编译固件**
-                - 分支：${{ github.event.inputs.openwrt_branch || 'master' }}
-                - 保留数量：${{ github.event.inputs.keep_releases }}
-                - 已启用：VMDK 镜像生成、MosDNS 智能分流、Docker、OpenClash
-                - 编译时间：$(date)
-                - "** <font color=#FFFF00 size=4>构建完成</font> **"
-            }
-          secret: "SECb72bffd2104d07454dc9754a6bf0a9f4fd1e8bf110de7b87d1f5af7a14e0598a"
-
+      # - name: 钉钉通知
+      #   uses: ghostoy/dingtalk-action@master
+      #   with:
+      #     webhook: "https://oapi.dingtalk.com/robot/send?access_token=36a1e8b0ef6ba7ccddd320cfb9fceae841917ed4850a329aedc52f87d05a5877"
+      #     msgtype: markdown
+      #     content: |
+      #       {
+      #         "title": "github.workflow 通知：openWRT 自动编译",
+      #         "text": "**自动编译固件** \n编译时间：$(date) \n "** <font color=#FFFF00 size=4>构建完成</font> **"
+      #       }
+      #     secret: "SECb72bffd2104d07454dc9754a6bf0a9f4fd1e8bf110de7b87d1f5af7a14e0598a"
 
       # ──────────────────────────────────────────────────────────────
       # 步骤：构建完成后处理（可选，推荐）
@@ -210,7 +202,7 @@ jobs:
       - name: 上传固件到 Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-X64-MosDNS-Docker-VMDK
+          name: OpenWrt-X64
           path: openwrt/bin/targets/x86/64/**
           retention-days: 7
 
@@ -268,10 +260,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 上传编译日志（失败时保留）
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: openwrt/.config
-          retention-days: 1
+      # - name: 上传编译日志（失败时保留）
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: build-log
+      #     path: openwrt/.config
+      #     retention-days: 1
