@@ -159,7 +159,10 @@ jobs:
           force_enable "luci-theme-bootstrap"      "y"   # 可选，默认主题
           force_enable "csstidy"                   "y"    # host 侧 CSS 工具
           force_enable "luasrcdiet"                "y"    # host 侧 Lua 压缩工具
-          
+          force_enable "theme-argon"               "y"
+          force_enable "theme-openwrt-2020"        "y"
+          force_enable "theme-openwrt"             "y"
+    
           echo "luci-app-vlmcsd 及其所有必要组件已强制启用"
           echo "所有强制启用操作完成"
           
