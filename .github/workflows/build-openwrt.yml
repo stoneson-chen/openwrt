@@ -43,11 +43,11 @@ jobs:
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev file wget ccache \
-            qemu-utils  ca-certificates
-            # pigz pxz xz-utils
+            qemu-utils  ca-certificates xz-utils
+            # pigz pxz 
 
       - name: 配置 ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           max-size: "5G"
           key: "ccache-openwrt-x86-64-${{ runner.os }}-${{ hashFiles('**/feeds.conf.default', '.config') }}"   # 包含 .config hash，变化时自动失效
@@ -63,30 +63,27 @@ jobs:
         run: |
           cd openwrt
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
-          git clone https://github.com/flytosky-f/openwrt-vlmcsd.git ./package/chenxx/openwrt-vlmcsd
+          # git clone https://github.com/flytosky-f/openwrt-vlmcsd.git ./package/chenxx/openwrt-vlmcsd
           # 确保 vlmcsd 包的版本字段符合 OpenWrt 的标准格式。
           # === 修复 vlmcsd 版本（关键！）===
-          sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1112/' ./package/chenxx/openwrt-vlmcsd/Makefile
-          sed -i 's/^PKG_RELEASE:=.*/PKG_RELEASE:=1/' ./package/chenxx/openwrt-vlmcsd/Makefile
-          git clone https://github.com/flytosky-f/luci-app-vlmcsd.git ./package/chenxx/luci-app-vlmcsd
+          # sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1112/' ./package/chenxx/openwrt-vlmcsd/Makefile
+          # sed -i 's/^PKG_RELEASE:=.*/PKG_RELEASE:=1/' ./package/chenxx/openwrt-vlmcsd/Makefile
+          # git clone https://github.com/flytosky-f/luci-app-vlmcsd.git ./package/chenxx/luci-app-vlmcsd
           git clone https://github.com/zxl78585/luci-app-filetransfer.git ./package/chenxx/luci-app-filetransfer
 
       - name: 复制 config 并强制启用必要组件
         run: |
           cd openwrt
-
           CONFIG_FILE="../config.lede.X64"
           if [ -f "$CONFIG_FILE" ]; then
             cp "$CONFIG_FILE" .config
             echo "✅ 已加载 config.lede.X64"
           else
             echo "❌ 未找到 config.lede.X64，使用默认 x86_64 generic 配置"
-            cat .config
-            # cat > .config << 'EOF'
-            # CONFIG_TARGET_x86=y
-            # CONFIG_TARGET_x86_64=y
-            # CONFIG_TARGET_x86_64_DEVICE_generic=y
-            # EOF
+            # 写入基础架构配置
+            echo "CONFIG_TARGET_x86=y" > .config
+            echo "CONFIG_TARGET_x86_64=y" >> .config
+            echo "CONFIG_TARGET_x86_64_DEVICE_generic=y" >> .config
           fi
 
           # 函数：强制启用某个包/配置项（覆盖 m → y，删除注释，新增 y）
@@ -113,6 +110,7 @@ jobs:
               fi
           }
 
+          echo "::group::强制启用某个包/配置项（覆盖 m → y，删除注释，新增 y）"
           force_enable "CONFIG_TARGET_x86" "y"
           force_enable "CONFIG_TARGET_x86_64" "y"
           force_enable "CONFIG_TARGET_x86_64_DEVICE_generic" "y"
@@ -150,21 +148,21 @@ jobs:
           echo "open-vm-tools 及其模块已强制启用"
 
           # 新增：luci-app-vlmcsd 及其依赖
-          force_enable "vlmcsd"                    "y"
-          force_enable "luci-app-vlmcsd"           "y"
-          force_enable "luci-base"                 "y"
-          force_enable "luci-lua-runtime"          "y"
-          force_enable "luci-compat"               "y"
+          # force_enable "vlmcsd"                    "y"
+          # force_enable "luci-app-vlmcsd"           "y"
+          # force_enable "luci-base"                 "y"
+          # force_enable "luci-lua-runtime"          "y"
+          # force_enable "luci-compat"               "y"
           force_enable "luci-mod-admin-full"       "y"   # 可选，完整管理面板
-          force_enable "luci-theme-bootstrap"      "y"   # 可选，默认主题
-          force_enable "csstidy"                   "y"    # host 侧 CSS 工具
-          force_enable "luasrcdiet"                "y"    # host 侧 Lua 压缩工具
-          force_enable "theme-argon"               "y"
+          # force_enable "luci-theme-bootstrap"      "y"   # 可选，默认主题
+          # force_enable "csstidy"                   "y"    # host 侧 CSS 工具
+          # force_enable "luasrcdiet"                "y"    # host 侧 Lua 压缩工具
+          # force_enable "theme-argon"               "y"
           force_enable "theme-openwrt-2020"        "y"
-          force_enable "theme-openwrt"             "y"
-    
-          echo "luci-app-vlmcsd 及其所有必要组件已强制启用"
+          # force_enable "theme-openwrt"             "y"
+          # echo "luci-app-vlmcsd 及其所有必要组件已强制启用"
           echo "所有强制启用操作完成"
+          echo "::endgroup::"
           
           sed -i "s/set system\.\@system\[-1\]\.timezone='UTC'/set system.@system[-1].timezone='CST-8'/" ./package/base-files/files/bin/config_generate
           sed -i "s/0\.openwrt\.pool\.ntp\.org/ntp1.aliyun.com/" ./package/base-files/files/bin/config_generate
