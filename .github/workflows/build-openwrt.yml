@@ -191,19 +191,19 @@ jobs:
           path: openwrt/bin/targets/x86/64/**
           retention-days: 7
 
-      # 提交并推送文件到仓库目录下
-      - name: 提交并推送文件
-        uses: stefanzweifel/git-auto-commit-action@v5
-        #在上一个步骤成功时执行
-        if: success()
-        with:
-          # 动态构造提交信息
-          commit_message: "chenxx(auto): 自动编译更新 [ci skip]"
-          # 提交信息末尾添加 [ci skip] 以防止工作流循环触发
-          # commit_options: '--message "[ci skip]"'
-          # 要添加的文件，'.' 代表所有文件
-          # file_pattern: .
-          file_pattern: openwrt/bin/targets/x86/64/
+      # # 提交并推送文件到仓库目录下
+      # - name: 提交并推送文件
+      #   uses: stefanzweifel/git-auto-commit-action@v5
+      #   #在上一个步骤成功时执行
+      #   if: success()
+      #   with:
+      #     # 动态构造提交信息
+      #     commit_message: "chenxx(auto): 自动编译更新 [ci skip]"
+      #     # 提交信息末尾添加 [ci skip] 以防止工作流循环触发
+      #     # commit_options: '--message "[ci skip]"'
+      #     # 要添加的文件，'.' 代表所有文件
+      #     # file_pattern: .
+      #     file_pattern: openwrt/bin/targets/x86/64/
           
       - name: 生成 SHA256 校验文件（仅固件）
         run: |
@@ -236,9 +236,9 @@ jobs:
         with:
           files: |
             openwrt/bin/targets/x86/64/**
-            openwrt/bin/targets/x86/64/sha256sums.txt
+            # openwrt/bin/targets/x86/64/sha256sums.txt
           tag_name: v${{ github.run_number }}
-          name: OpenWrt X64 (MosDNS + Docker + OpenClash + VMDK) #${{ github.run_number }}
+          name: OpenWrt X64 (OpenClash + VMDK) #${{ github.run_number }}
           body: |
             **自动编译固件**
             - 分支：${{ github.event.inputs.openwrt_branch || 'master' }}
@@ -247,6 +247,7 @@ jobs:
             - 编译时间：$(date)
           draft: false
           prerelease: false
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
