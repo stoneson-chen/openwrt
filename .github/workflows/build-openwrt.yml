@@ -134,7 +134,7 @@ jobs:
           force_enable "luci-proto-wireguard"   "y"
           force_enable "luci-app-wireguard"     "y"
           force_enable "kmod-usb-printer"       "y"
-
+          
           # 新增：强制启用 open-vm-tools 及其相关模块
           force_enable "open-vm-tools"           "y"
           # force_enable "open-vm-tools-fuse"      "y"
@@ -146,10 +146,23 @@ jobs:
           force_enable "kmod-vmware-vsock"       "y"
           force_enable "kmod-vmware-balloon"     "y"
           force_enable "kmod-vmware-vmmemctl"    "y"
-      
+        
           echo "open-vm-tools 及其模块已强制启用"
 
+          # 新增：luci-app-vlmcsd 及其依赖
+          force_enable "vlmcsd"                    "y"
+          force_enable "luci-app-vlmcsd"           "y"
+          force_enable "luci-base"                 "y"
+          force_enable "luci-lua-runtime"          "y"
+          force_enable "luci-compat"               "y"
+          force_enable "luci-mod-admin-full"       "y"   # 可选，完整管理面板
+          force_enable "luci-theme-bootstrap"      "y"   # 可选，默认主题
+          force_enable "csstidy"                   "y"    # host 侧 CSS 工具
+          force_enable "luasrcdiet"                "y"    # host 侧 Lua 压缩工具
+          
+          echo "luci-app-vlmcsd 及其所有必要组件已强制启用"
           echo "所有强制启用操作完成"
+          
           sed -i "s/set system\.\@system\[-1\]\.timezone='UTC'/set system.@system[-1].timezone='CST-8'/" ./package/base-files/files/bin/config_generate
           sed -i "s/0\.openwrt\.pool\.ntp\.org/ntp1.aliyun.com/" ./package/base-files/files/bin/config_generate
           sed -i "s/1\.openwrt\.pool\.ntp\.org/time1.cloud.tencent.com/" ./package/base-files/files/bin/config_generate
@@ -184,6 +197,19 @@ jobs:
       #       }
       #     secret: "SECb72bffd2104d07454dc9754a6bf0a9f4fd1e8bf110de7b87d1f5af7a14e0598a"
 
+      - name: 钉钉通知 - 编译结束
+        if: always()
+        uses: ghostoy/dingtalk-action@master
+        with:
+          webhook: ${{ secrets.DINGTALK_WEBHOOK }}
+          secret: ${{ secrets.DINGTALK_SECRET }}  # 如果机器人未开启加签，可删除此行或留空
+          msgtype: markdown
+          content: |
+            {
+              "title": "GitHub Workflow 通知",
+              "text": "### 🔄 OpenWrt 自动编译完成\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            }
+            
       - name: 上传固件到 Artifacts
         uses: actions/upload-artifact@v4
         with:
