@@ -38,6 +38,24 @@ jobs:
         id: current_time
         run: echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
 
+      - name: 复制 config 并强制启用必要组件
+        run: |
+          cd openwrt
+
+          CONFIG_FILE="../config.lede.X64"
+          if [ -f "$CONFIG_FILE" ]; then
+            cp "$CONFIG_FILE" .config
+            echo "✅ 已加载 config.lede.X64"
+          else
+            echo "❌ 未找到 config.lede.X64，使用默认 x86_64 generic 配置"
+            cat .config
+            # cat > .config << 'EOF'
+            # CONFIG_TARGET_x86=y
+            # CONFIG_TARGET_x86_64=y
+            # CONFIG_TARGET_x86_64_DEVICE_generic=y
+            # EOF
+          fi
+
       - name: 钉钉通知 - 开始编译
         if: always()
         uses: ghostoy/dingtalk-action@master
