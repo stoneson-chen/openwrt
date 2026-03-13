@@ -39,7 +39,7 @@ jobs:
       - name: 检出仓库代码
         uses: actions/checkout@v4
 
-      - name: 安装依赖（Ubuntu 24.04 已移除 pxz）
+      - name: 安装依赖
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
@@ -58,7 +58,6 @@ jobs:
       - name: 克隆 OpenWrt 源码
         run: |
           BRANCH="${{ github.event.inputs.openwrt_branch || 'master' }}"
-          # git clone --depth=1 https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
           git clone https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
 
       - name: 添加第三方 feeds
@@ -67,25 +66,33 @@ jobs:
           cat >> feeds.conf.default <<EOF
           src-git openclash https://github.com/vernesong/OpenClash.git
           src-git mosdns https://github.com/sbwml/luci-app-mosdns.git
-          # src-git adguardhome https://github.com/stevenjoezhang/luci-app-adguardhome.git
-          src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git
-          src-git helloworld https://github.com/fw876/helloworld.git
-          src-git lienol https://github.com/Lienol/openwrt-package.git
           EOF
+          # src-git adguardhome https://github.com/stevenjoezhang/luci-app-adguardhome.git
+          # src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git
+          # src-git helloworld https://github.com/fw876/helloworld.git
+          # src-git lienol https://github.com/Lienol/openwrt-package.git
 
-      - name: 更新 feeds 并生成基础配置
+      - name: 更新 feeds
         run: |
           cd openwrt
-          # 删除导致递归依赖的包
-          rm -rf package/feeds/lienol/luci-app-kodexplorer
-          rm -rf package/feeds/lienol/luci-app-nginx-pingos
-          rm -rf package/feeds/packages/onionshare-cli
-          
           ./scripts/feeds update -a
+          # 删除导致递归依赖的包
+          # rm -rf feeds/lienol/luci-app-kodexplorer
+          # 删除依赖缺失的包
+          # rm -rf feeds/lienol/luci-app-nginx-pingos
+          rm -rf feeds/packages/onionshare-cli
+          echo "已删除问题包目录"
+
+      - name: 安装 feeds 并生成基础配置
+        run: |
+          cd openwrt
           ./scripts/feeds install -a
           if [ -f "../config.openwrt.X64" ]; then
             cp "../config.openwrt.X64" .config
             echo "✅ 已加载 config.openwrt.X64"
+            # 清理行内注释，避免警告（如 TARGET_ROOTFS_PARTSIZE 带注释）
+            sed -i 's/[[:space:]]*#.*$//' .config
+            sed -i '/^[[:space:]]*$/d' .config
           else
             echo "❌ 未找到 config.openwrt.X64，使用默认 x86_64 generic 配置"
             {
@@ -94,12 +101,15 @@ jobs:
               echo "CONFIG_TARGET_x86_64_DEVICE_generic=y"
             } > .config
           fi
-          
+          # 系统配置修改（保留，这些不是包选择）
+          sed -i "s/set system\.\@system\[-1\]\.timezone='UTC'/set system.@system[-1].timezone='CST-8'/" ./package/base-files/files/bin/config_generate
+          sed -i "s/0\.openwrt\.pool\.ntp\.org/ntp1.aliyun.com/" ./package/base-files/files/bin/config_generate
+          sed -i "s/1\.openwrt\.pool\.ntp\.org/time1.cloud.tencent.com/" ./package/base-files/files/bin/config_generate
+          echo "net.netfilter.nf_conntrack_max=65535" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
+          echo "net.ipv4.ip_forward = 1" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
           make defconfig
-          echo "生成后。config文件内容："
-          more .config
 
-      - name: 循环验证并强制启用所有必需包
+      - name: 循环验证并强制启用所有必需包（基于 config.openwrt.X64）
         run: |
           cd openwrt
           MAX_ATTEMPTS=3
@@ -112,9 +122,10 @@ jobs:
             MISSING=0
             MISSING_ITEMS=""
 
-            # 从原始配置文件中检查 PACKAGE 项
+            # 从原始配置文件中检查所有 PACKAGE 项（实时清理注释）
             if [ -f "$CONFIG_FILE" ]; then
               while read line; do
+                # 跳过注释行（已清理但加保护）
                 [[ "$line" =~ ^[[:space:]]*# ]] && continue
                 [[ -z "$line" ]] && continue
                 if [[ "$line" =~ ^(CONFIG_PACKAGE_[^=]+)=(.*)$ ]]; then
@@ -132,7 +143,7 @@ jobs:
                     fi
                   fi
                 fi
-              done < "$CONFIG_FILE"
+              done < <(sed 's/[[:space:]]*#.*$//' "$CONFIG_FILE" | sed '/^[[:space:]]*$/d')
             fi
 
             if [ $MISSING -eq 0 ]; then
@@ -153,7 +164,6 @@ jobs:
               full_key="CONFIG_${config_opt}"
               echo "启用: $full_key=$val"
 
-              # 直接编辑 .config 文件
               if grep -q "^${full_key}=" .config; then
                 sed -i "s|^${full_key}=.*|${full_key}=${val}|" .config
                 echo "  → 已更新 ${full_key}=${val}"
@@ -166,7 +176,6 @@ jobs:
               fi
             done
 
-            # 重新生成配置，解决新引入的依赖
             make defconfig
             attempt=$((attempt + 1))
           done
@@ -196,7 +205,6 @@ jobs:
             [[ -z "$line" ]] && continue
             if [[ "$line" =~ ^CONFIG_PACKAGE_([^=]+)=[ym]$ ]]; then
               pkg="${BASH_REMATCH[1]}"
-              # 同时兼容 .apk 和 .ipk 扩展名
               if ls ${pkg}_*.apk >/dev/null 2>&1 || ls ${pkg}_*.ipk >/dev/null 2>&1; then
                 echo "✅ ${pkg} 包已生成"
               else
@@ -204,7 +212,7 @@ jobs:
                 MISSING=1
               fi
             fi
-          done < $GITHUB_WORKSPACE/config.openwrt.X64
+          done < <(sed 's/[[:space:]]*#.*$//' $GITHUB_WORKSPACE/config.openwrt.X64 | sed '/^[[:space:]]*$/d')
 
           if [ $MISSING -eq 1 ]; then
             echo "错误: 部分软件包未生成"
@@ -221,7 +229,7 @@ jobs:
           msgtype: markdown
           content: |
             {
-              "title": "GitHub Workflow 通知",
+              "title": "OpenWrt 自动编译",
               "text": "### 🔄 OpenWrt 自动编译完成\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n- **编译时间**：${{ env.CURRENT_TIME }}\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             }
 
@@ -236,8 +244,6 @@ jobs:
         run: |
           TARGET_DIR="openwrt/bin/targets/x86/64"
           cd "$TARGET_DIR" || { echo "❌ 固件目录不存在，跳过"; exit 0; }
-          echo "当前目录文件列表："
-          ls -la
           find . -maxdepth 1 -type f \( \
             -name "*.img.gz" -o \
             -name "*.vmdk" -o \
@@ -247,8 +253,7 @@ jobs:
             -name "*.factory.*" \
           \) -exec sha256sum {} + > sha256sums.txt
           if [ -s sha256sums.txt ]; then
-            echo "✅ sha256sums.txt 生成成功："
-            cat sha256sums.txt
+            echo "✅ sha256sums.txt 生成成功"
           else
             echo "⚠️ 没有找到可计算 SHA256 的固件文件，跳过生成"
           fi
