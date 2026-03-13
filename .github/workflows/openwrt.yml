@@ -34,6 +34,11 @@ jobs:
     timeout-minutes: 480
 
     steps:
+      - name: 获取当前时间
+        id: current_time
+        run: 
+          echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
+          
       - name: 检出仓库代码
         uses: actions/checkout@v4
     
@@ -128,45 +133,45 @@ jobs:
           }
 
           echo "::group::强制启用某个包/配置项（覆盖 m → y，删除注释，新增 y）"
-          force_enable "CONFIG_TARGET_x86" "y"
-          force_enable "CONFIG_TARGET_x86_64" "y"
-          force_enable "CONFIG_TARGET_x86_64_DEVICE_generic" "y"
+          # force_enable "CONFIG_TARGET_x86" "y"
+          # force_enable "CONFIG_TARGET_x86_64" "y"
+          # force_enable "CONFIG_TARGET_x86_64_DEVICE_generic" "y"
           # 强制启用 VMDK 镜像生成
-          force_enable "CONFIG_VMDK_IMAGES" "y"
+          # force_enable "CONFIG_VMDK_IMAGES" "y"
 
           # 其他必须组件
-          force_enable "chinadns-ng"           "y"
-          force_enable "mosdns"                "y"
-          force_enable "luci-app-mosdns"       "y"
-          force_enable "docker"                "y"
-          force_enable "dockerd"               "y"
-          force_enable "containerd"            "y"
-          force_enable "runc"                  "y"
-          force_enable "luci-app-dockerman"    "y"
-          force_enable "luci-app-openclash"    "y"
-          force_enable "kmod-wireguard"         "y"
-          force_enable "wireguard-tools"        "y"
-          force_enable "luci-proto-wireguard"   "y"
-          force_enable "luci-app-wireguard"     "y"
+          # force_enable "chinadns-ng"           "y"
+          # force_enable "mosdns"                "y"
+          # force_enable "luci-app-mosdns"       "y"
+          # force_enable "docker"                "y"
+          # force_enable "dockerd"               "y"
+          # force_enable "containerd"            "y"
+          # force_enable "runc"                  "y"
+          # force_enable "luci-app-dockerman"    "y"
+          # force_enable "luci-app-openclash"    "y"
+          # force_enable "kmod-wireguard"         "y"
+          # force_enable "wireguard-tools"        "y"
+          # force_enable "luci-proto-wireguard"   "y"
+          # force_enable "luci-app-wireguard"     "y"
           force_enable "kmod-usb-printer"       "y"
           
           # 新增：强制启用 open-vm-tools 及其相关模块
-          force_enable "open-vm-tools"           "y"
+          # force_enable "open-vm-tools"           "y"
           # force_enable "open-vm-tools-fuse"      "y"
-          force_enable "luci-app-open-vm-tools"  "y"   # 如果需要 LuCI 界面再打开
-          force_enable "kmod-vmware"             "y"
-          force_enable "kmod-vmware-guest"       "y"
-          force_enable "kmod-vmware-pvscsi"      "y"
-          force_enable "kmod-vmware-vmci"        "y"
-          force_enable "kmod-vmware-vsock"       "y"
-          force_enable "kmod-vmware-balloon"     "y"
-          force_enable "kmod-vmware-vmmemctl"    "y"
-        
+          # force_enable "luci-app-open-vm-tools"  "y"   # 如果需要 LuCI 界面再打开
+          # force_enable "kmod-vmware"             "y"
+          # force_enable "kmod-vmware-guest"       "y"
+          # force_enable "kmod-vmware-pvscsi"      "y"
+          # force_enable "kmod-vmware-vmci"        "y"
+          # force_enable "kmod-vmware-vsock"       "y"
+          # force_enable "kmod-vmware-balloon"     "y"
+          # force_enable "kmod-vmware-vmmemctl"    "y"
           echo "open-vm-tools 及其模块已强制启用"
 
           # 新增：luci-app-vlmcsd 及其依赖
           # force_enable "vlmcsd"                    "y"
           # force_enable "luci-app-vlmcsd"           "y"
+          # echo "luci-app-vlmcsd 及其所有必要组件已强制启用"
           # force_enable "luci-base"                 "y"
           # force_enable "luci-lua-runtime"          "y"
           # force_enable "luci-compat"               "y"
@@ -174,10 +179,9 @@ jobs:
           # force_enable "luci-theme-bootstrap"      "y"   # 可选，默认主题
           # force_enable "csstidy"                   "y"    # host 侧 CSS 工具
           # force_enable "luasrcdiet"                "y"    # host 侧 Lua 压缩工具
-          # force_enable "theme-argon"               "y"
+          force_enable "theme-argon"               "y"
           force_enable "theme-openwrt-2020"        "y"
-          # force_enable "theme-openwrt"             "y"
-          # echo "luci-app-vlmcsd 及其所有必要组件已强制启用"
+          force_enable "theme-openwrt"             "y"
           echo "所有强制启用操作完成"
           echo "::endgroup::"
           
@@ -186,6 +190,7 @@ jobs:
           sed -i "s/1\.openwrt\.pool\.ntp\.org/time1.cloud.tencent.com/" ./package/base-files/files/bin/config_generate
           echo "net.netfilter.nf_conntrack_max=65535" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
           echo "net.ipv4.ip_forward = 1" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
+          more ./package/base-files/files/etc/sysctl.d/10-default.conf
 
       - name: 生成配置 + 下载源码
         run: |
@@ -225,7 +230,7 @@ jobs:
           content: |
             {
               "title": "GitHub Workflow 通知",
-              "text": "### 🔄 OpenWrt 自动编译完成\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+              "text": "### 🔄 OpenWrt 自动编译完成\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n- *编译时间*: ${{ env.CURRENT_TIME }}\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             }
             
       - name: 上传固件到 Artifacts
@@ -286,9 +291,15 @@ jobs:
           body: |
             **自动编译固件**
             - 分支：${{ github.event.inputs.openwrt_branch || 'master' }}
+            - OpenWrt 生产环境最终完整 .config 文件（内核 6.12 深度优化版）
+            - 硬件：J4125 / J5005 + 4× Intel I226 2.5G + VMware 虚拟机
+            - 日期：2026年3月
+            - 内核：6.12（EEVDF + PREEMPT_RT 支持）
+            - 目标：极致吞吐 + 低延迟 + 高并发 + Docker + 科学上网 + QoS
+            - 简体中文 LuCI + 完整常用插件
             - 保留数量：${{ github.event.inputs.keep_releases }}
             - 已启用：VMDK 镜像生成、MosDNS 智能分流、Docker、OpenClash
-            - 编译时间：$(date)
+            - 编译时间：${{ env.CURRENT_TIME }}
           draft: false
           prerelease: false
           overwrite_files: true
