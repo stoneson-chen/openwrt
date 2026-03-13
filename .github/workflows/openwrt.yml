@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev file wget \
-            qemu-utils ca-certificates xz-utils pigz
+            qemu-utils ca-certificates xz-utils pigz pxz
 
       - name: 配置 ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
@@ -127,34 +127,68 @@ jobs:
           ./scripts/feeds install -a
           make defconfig
 
-      - name: 验证配置文件中的包是否全部启用
+      - name: 验证并自动修复配置缺失项
         run: |
           cd openwrt
-          MISSING=0
-          while read line; do
-            # 跳过注释和空行
-            [[ "$line" =~ ^[[:space:]]*# ]] && continue
-            [[ -z "$line" ]] && continue
-            if [[ "$line" =~ ^(CONFIG_PACKAGE_[^=]+)=(.*)$ ]]; then
-              key="${BASH_REMATCH[1]}"
-              val="${BASH_REMATCH[2]}"
-              # 只关心 y 或 m
-              if [[ "$val" == "y" || "$val" == "m" ]]; then
-                if grep -q "^${key}=y" .config || grep -q "^${key}=m" .config; then
-                  echo "✅ $key 已启用 (值为 $(grep "^${key}=" .config | cut -d= -f2))"
-                else
-                  echo "❌ $key 在 .config 中未启用或值为 n"
-                  MISSING=1
+          MAX_ATTEMPTS=3
+          attempt=1
+
+          # 从仓库根目录读取原始配置
+          CONFIG_FILE="$GITHUB_WORKSPACE/config.openwrt.X64"
+
+          while [ $attempt -le $MAX_ATTEMPTS ]; do
+            echo "========== 配置验证尝试 #$attempt =========="
+            MISSING=0
+            MISSING_ITEMS=""
+
+            # 读取原始配置，检查每个 PACKAGE 项
+            while read line; do
+              [[ "$line" =~ ^[[:space:]]*# ]] && continue
+              [[ -z "$line" ]] && continue
+              if [[ "$line" =~ ^(CONFIG_PACKAGE_[^=]+)=(.*)$ ]]; then
+                key="${BASH_REMATCH[1]}"
+                val="${BASH_REMATCH[2]}"
+                if [[ "$val" == "y" || "$val" == "m" ]]; then
+                  if grep -q "^${key}=y" .config || grep -q "^${key}=m" .config; then
+                    echo "✅ $key 已启用 (值为 $(grep "^${key}=" .config | cut -d= -f2))"
+                  else
+                    echo "❌ $key 缺失 (期望 $val)"
+                    MISSING=1
+                    MISSING_ITEMS="$MISSING_ITEMS $key=$val"
+                  fi
                 fi
               fi
-            fi
-          done < ../config.openwrt.X64
+            done < "$CONFIG_FILE"
 
-          if [ $MISSING -eq 1 ]; then
-            echo "错误: 部分配置项未正确启用，请检查"
-            exit 1
-          fi
-          echo "所有配置项均已正确启用"
+            if [ $MISSING -eq 0 ]; then
+              echo "✅ 所有配置项均已正确启用"
+              exit 0
+            fi
+
+            if [ $attempt -eq $MAX_ATTEMPTS ]; then
+              echo "❌ 经过 $MAX_ATTEMPTS 次尝试后，仍有配置项未启用:"
+              echo "$MISSING_ITEMS" | tr ' ' '\n'
+              exit 1
+            fi
+
+            echo "尝试重新启用缺失项 (使用 scripts/config)..."
+            for item in $MISSING_ITEMS; do
+              key="${item%%=*}"
+              val="${item#*=}"
+              # 移除 CONFIG_ 前缀，得到如 PACKAGE_xxx 的形式
+              config_opt="${key#CONFIG_}"
+              echo "启用: $config_opt (设置为 $val)"
+              if [ "$val" == "y" ]; then
+                ./scripts/config --enable "$config_opt"
+              elif [ "$val" == "m" ]; then
+                ./scripts/config --module "$config_opt"
+              fi
+            done
+
+            # 重新生成配置
+            make defconfig
+            attempt=$((attempt + 1))
+          done
 
       - name: 下载源代码（带重试）
         run: |
@@ -181,7 +215,7 @@ jobs:
             [[ -z "$line" ]] && continue
             if [[ "$line" =~ ^CONFIG_PACKAGE_([^=]+)=[ym]$ ]]; then
               pkg="${BASH_REMATCH[1]}"
-              # 检查是否存在对应包文件（扩展名可能是 .apk 或 .ipk，取决于 OpenWrt 版本）
+              # 检查是否存在对应包文件（扩展名可能是 .apk 或 .ipk）
               if ls ${pkg}_*.apk >/dev/null 2>&1 || ls ${pkg}_*.ipk >/dev/null 2>&1; then
                 echo "✅ ${pkg} 包已生成"
               else
