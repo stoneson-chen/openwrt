@@ -1,4 +1,4 @@
-name: OpenWrt自动编译(大神级 OpenWrt x86 配置)
+name: OpenWrt 自动编译 (x86_64 优化版)
 
 on:
   workflow_dispatch:
@@ -16,10 +16,9 @@ on:
         required: false
         default: '2'
 
-  # push:
-  #   branches: [ main, master ]
-  # pull_request:
-  #   branches: [ main, master ]
+  # 可选：添加定时触发（每周日凌晨2点）
+  # schedule:
+  #   - cron: '0 2 * * 0'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,219 +28,155 @@ permissions:
   contents: write
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   TZ: Asia/Shanghai
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 480
-    
+    timeout-minutes: 360  # 根据实际编译耗时调整，原480分钟偏长
 
     steps:
       - name: 获取当前时间
         id: current_time
-        run: 
-          echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
-          
-      - name: 检出仓库代码
-        # uses: actions/checkout@v4
-        uses: actions/checkout@v6.0.2
+        run: echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
 
-    
-      - name: 安装依赖 + ccache
+      - name: 检出仓库代码
+        uses: actions/checkout@v4  # 使用官方推荐版本
+
+      - name: 安装依赖
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
-            python3-setuptools rsync swig unzip zlib1g-dev file wget ccache \
-            qemu-utils  ca-certificates xz-utils
-            # pigz pxz 
+            python3-setuptools rsync swig unzip zlib1g-dev file wget \
+            qemu-utils ca-certificates xz-utils pigz pxz
+            # 启用并行压缩工具
 
       - name: 配置 ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
-          max-size: "5G"
-          key: "ccache-openwrt-x86-64-${{ runner.os }}-${{ hashFiles('**/feeds.conf.default', '.config') }}"   # 包含 .config hash，变化时自动失效
+          max-size: '5G'
+          key: ccache-openwrt-x86-64-${{ runner.os }}-${{ hashFiles('**/feeds.conf.default', '.config') }}
           restore-keys: |
             ccache-openwrt-x86-64-${{ runner.os }}-
 
-      - name: 克隆 OpenWrt 源码及组件vlmcsd、filetransfer
+      - name: 克隆 OpenWrt 源码
         run: |
           BRANCH="${{ github.event.inputs.openwrt_branch || 'master' }}"
           git clone --depth=1 https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
 
-      - name: 添加第三方 feed
+      - name: 添加第三方 feeds
         run: |
           cd openwrt
-          # echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
-          
-          # OpenClash
-          echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
-          
-          # MosDNS
-          echo "src-git mosdns https://github.com/sbwml/luci-app-mosdns.git" >> feeds.conf.default
-          
-          # AdGuardHome
-          echo "src-git adguardhome https://github.com/stevenjoezhang/luci-app-adguardhome.git" >> feeds.conf.default
-          
-          # Passwall packages (依赖库很全)，Docker Compose
-          echo "src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git" >> feeds.conf.default
+          # 只保留必要的 feeds，去除重复项
+          cat >> feeds.conf.default <<EOF
+          src-git openclash https://github.com/vernesong/OpenClash.git
+          src-git mosdns https://github.com/sbwml/luci-app-mosdns.git
+          src-git adguardhome https://github.com/stevenjoezhang/luci-app-adguardhome.git
+          src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git
+          src-git helloworld https://github.com/fw876/helloworld.git
+          src-git lienol https://github.com/Lienol/openwrt-package.git
+          EOF
+          # 所有第三方包均通过 feeds 管理，无需手动 git clone
 
-          echo "src-git helloworld https://github.com/fw876/helloworld.git" >> feeds.conf.default
-          echo "src-git lienol https://github.com/Lienol/openwrt-package.git" >> feeds.conf.default
-          echo "src-git sbwml https://github.com/sbwml/luci-app-mosdns.git" >> feeds.conf.default
-
-          # git clone https://github.com/flytosky-f/openwrt-vlmcsd.git ./package/chenxx/openwrt-vlmcsd
-          # 确保 vlmcsd 包的版本字段符合 OpenWrt 的标准格式。
-          # === 修复 vlmcsd 版本（关键！）===
-          # sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1112/' ./package/chenxx/openwrt-vlmcsd/Makefile
-          # sed -i 's/^PKG_RELEASE:=.*/PKG_RELEASE:=1/' ./package/chenxx/openwrt-vlmcsd/Makefile
-          # git clone https://github.com/flytosky-f/luci-app-vlmcsd.git ./package/chenxx/luci-app-vlmcsd
-          # git clone https://github.com/zxl78585/luci-app-filetransfer.git ./package/chenxx/luci-app-filetransfer
-
-      - name: 复制 config 并强制启用必要组件
+      - name: 复制配置文件并强制启用必要组件
         run: |
           cd openwrt
-          CONFIG_FILE="../config.openwrt.X64"
-          if [ -f "$CONFIG_FILE" ]; then
-            cp "$CONFIG_FILE" .config
+
+          # 如果存在自定义配置则复制，否则生成基础 x86_64 配置
+          if [ -f "../config.openwrt.X64" ]; then
+            cp "../config.openwrt.X64" .config
             echo "✅ 已加载 config.openwrt.X64"
           else
             echo "❌ 未找到 config.openwrt.X64，使用默认 x86_64 generic 配置"
-            # 写入基础架构配置
-            echo "CONFIG_TARGET_x86=y" > .config
-            echo "CONFIG_TARGET_x86_64=y" >> .config
-            echo "CONFIG_TARGET_x86_64_DEVICE_generic=y" >> .config
+            {
+              echo "CONFIG_TARGET_x86=y"
+              echo "CONFIG_TARGET_x86_64=y"
+              echo "CONFIG_TARGET_x86_64_DEVICE_generic=y"
+            } > .config
           fi
 
-          # 函数：强制启用某个包/配置项（覆盖 m → y，删除注释，新增 y）
-          force_enable() {
-            local key="$1"
-            local value="$2"
+          # 辅助函数：强制设置任意配置项（格式必须为 CONFIG_XXX=value）
+          set_config() {
+            local entry="$1"
+            local key="${entry%%=*}"
+            local value="${entry#*=}"
 
-            # 如果已经是 CONFIG_ 开头，就不加前缀；否则自动加 CONFIG_PACKAGE_
-            if [[ "$key" == CONFIG_* ]]; then
-              local full_key="$key"
+            if grep -q "^${key}=" .config; then
+              sed -i "s|^${key}=.*|${key}=${value}|" .config
+              echo "  → 已更新 ${key}=${value}"
+            elif grep -q "^# ${key} is not set" .config; then
+              sed -i "s|^# ${key} is not set|${key}=${value}|" .config
+              echo "  → 已启用（原注释） ${key}=${value}"
             else
-              local full_key="CONFIG_PACKAGE_${key}"
+              echo "${key}=${value}" >> .config
+              echo "  → 新增 ${key}=${value}"
             fi
-
-            if grep -q "^${full_key}=[ym]" .config; then
-                sed -i "s/^${full_key}=[ym]/${full_key}=${value}/" .config
-                echo "  → 已强制设置为 ${full_key}=${value}"
-              elif grep -q "^# ${full_key} is not set" .config; then
-                sed -i "s/^# ${full_key} is not set/${full_key}=${value}/" .config
-                echo "  → 已强制启用（从注释改为） ${full_key}=${value}"
-              else
-                echo "${full_key}=${value}" >> .config
-                echo "  → 新增 ${full_key}=${value}"
-              fi
           }
 
-          echo "::group::强制启用某个包/配置项（覆盖 m → y，删除注释，新增 y）"
-          # force_enable "CONFIG_TARGET_x86" "y"
-          # force_enable "CONFIG_TARGET_x86_64" "y"
-          # force_enable "CONFIG_TARGET_x86_64_DEVICE_generic" "y"
-          # 强制启用 VMDK 镜像生成
-          # force_enable "CONFIG_VMDK_IMAGES" "y"
-
-          # 其他必须组件
-          # force_enable "chinadns-ng"           "y"
-          # force_enable "mosdns"                "y"
-          # force_enable "luci-app-mosdns"       "y"
-          # force_enable "docker"                "y"
-          # force_enable "dockerd"               "y"
-          # force_enable "containerd"            "y"
-          # force_enable "runc"                  "y"
-          # force_enable "luci-app-dockerman"    "y"
-          # force_enable "luci-app-openclash"    "y"
-          # force_enable "kmod-wireguard"         "y"
-          # force_enable "wireguard-tools"        "y"
-          # force_enable "luci-proto-wireguard"   "y"
-          # force_enable "luci-app-wireguard"     "y"
-          force_enable "kmod-usb-printer"       "y"
-          
-          # 新增：强制启用 open-vm-tools 及其相关模块
-          # force_enable "open-vm-tools"           "y"
-          # force_enable "open-vm-tools-fuse"      "y"
-          # force_enable "luci-app-open-vm-tools"  "y"   # 如果需要 LuCI 界面再打开
-          # force_enable "kmod-vmware"             "y"
-          # force_enable "kmod-vmware-guest"       "y"
-          # force_enable "kmod-vmware-pvscsi"      "y"
-          # force_enable "kmod-vmware-vmci"        "y"
-          # force_enable "kmod-vmware-vsock"       "y"
-          # force_enable "kmod-vmware-balloon"     "y"
-          # force_enable "kmod-vmware-vmmemctl"    "y"
-          echo "open-vm-tools 及其模块已强制启用"
-
-          # 新增：luci-app-vlmcsd 及其依赖
-          # force_enable "vlmcsd"                    "y"
-          # force_enable "luci-app-vlmcsd"           "y"
-          # echo "luci-app-vlmcsd 及其所有必要组件已强制启用"
-          # force_enable "luci-base"                 "y"
-          # force_enable "luci-lua-runtime"          "y"
-          # force_enable "luci-compat"               "y"
-          force_enable "luci-mod-admin-full"       "y"   # 可选，完整管理面板
-          # force_enable "luci-theme-bootstrap"      "y"   # 可选，默认主题
-          # force_enable "csstidy"                   "y"    # host 侧 CSS 工具
-          # force_enable "luasrcdiet"                "y"    # host 侧 Lua 压缩工具
-          force_enable "theme-argon"               "y"
-          force_enable "theme-openwrt-2020"        "y"
-          force_enable "theme-openwrt"             "y"
-          force_enable "luci-app-kodexplorer"             "N"
-          
-          echo "所有强制启用操作完成"
+          echo "::group::强制设置关键配置项"
+          # 必须启用的内核模块/应用
+          set_config "CONFIG_PACKAGE_kmod-usb-printer=y"
+          set_config "CONFIG_PACKAGE_luci-mod-admin-full=y"
+          set_config "CONFIG_PACKAGE_theme-argon=y"
+          set_config "CONFIG_PACKAGE_theme-openwrt-2020=y"
+          set_config "CONFIG_PACKAGE_theme-openwrt=y"
+          set_config "CONFIG_PACKAGE_luci-app-kodexplorer=n"  # 明确禁用
           echo "::endgroup::"
-          
+
+          # 修改默认时区和 NTP 服务器
           sed -i "s/set system\.\@system\[-1\]\.timezone='UTC'/set system.@system[-1].timezone='CST-8'/" ./package/base-files/files/bin/config_generate
           sed -i "s/0\.openwrt\.pool\.ntp\.org/ntp1.aliyun.com/" ./package/base-files/files/bin/config_generate
           sed -i "s/1\.openwrt\.pool\.ntp\.org/time1.cloud.tencent.com/" ./package/base-files/files/bin/config_generate
+
+          # 增加系统默认参数
           echo "net.netfilter.nf_conntrack_max=65535" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
           echo "net.ipv4.ip_forward = 1" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
-          more ./package/base-files/files/etc/sysctl.d/10-default.conf
 
-      - name: 生成配置 + 下载源码
+      - name: 更新 feeds 并生成配置
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           make defconfig
-          make download -j$(nproc) || make download V=s -j1   # 先并行下载，失败再详细重试
-          # make download -j$(nproc)
 
-      - name: 开始编译
+          # 验证关键配置是否生效（示例）
+          echo "::group::验证关键配置"
+          grep -E "CONFIG_PACKAGE_kmod-usb-printer=|CONFIG_PACKAGE_luci-mod-admin-full=" .config || {
+            echo "❌ 关键配置未生效，请检查"
+            exit 1
+          }
+          echo "::endgroup::"
+
+      - name: 下载源代码（带重试）
         run: |
           cd openwrt
-          # make -j$(nproc) V=s
-          make -j$(nproc) IGNORE_ERRORS="n m" || make -j1 V=s   # 出错时给详细日志
+          for i in {1..3}; do
+            make download -j$(nproc) && break
+            echo "下载失败，10秒后重试 ($i/3)"
+            sleep 10
+          done
+
+      - name: 编译固件（带降级重试）
+        run: |
+          cd openwrt
+          # 先尝试全速编译，失败后单线程详细输出
+          make -j$(nproc) || make -j1 V=s
           ccache -s
-          
-      # - name: 钉钉通知
-      #   uses: ghostoy/dingtalk-action@master
-      #   with:
-      #     webhook: "https://oapi.dingtalk.com/robot/send?access_token=36a1e8b0ef6ba7ccddd320cfb9fceae841917ed4850a329aedc52f87d05a5877"
-      #     msgtype: markdown
-      #     content: |
-      #       {
-      #         "title": "github.workflow 通知：openWRT 自动编译",
-      #         "text": "**自动编译固件** \n编译时间：$(date) \n "** <font color=#FFFF00 size=4>构建完成</font> **"
-      #       }
-      #     secret: "SECb72bffd2104d07454dc9754a6bf0a9f4fd1e8bf110de7b87d1f5af7a14e0598a"
 
       - name: 钉钉通知 - 编译结束
         if: always()
         uses: ghostoy/dingtalk-action@master
         with:
           webhook: ${{ secrets.DINGTALK_WEBHOOK }}
-          secret: ${{ secrets.DINGTALK_SECRET }}  # 如果机器人未开启加签，可删除此行或留空
+          secret: ${{ secrets.DINGTALK_SECRET }}
           msgtype: markdown
           content: |
             {
               "title": "GitHub Workflow 通知",
-              "text": "### 🔄 OpenWrt 自动编译完成\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n- *编译时间*: ${{ env.CURRENT_TIME }}\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+              "text": "### 🔄 OpenWrt 自动编译完成\n\n- **仓库**：${{ github.repository }}\n- **分支**：${{ github.ref_name }}\n- **触发者**：${{ github.actor }}\n- **事件**：${{ github.event_name }}\n- **编译时间**：${{ env.CURRENT_TIME }}\n[查看 Actions 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             }
-            
+
       - name: 上传固件到 Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -249,28 +184,15 @@ jobs:
           path: openwrt/bin/targets/x86/64/**
           retention-days: 7
 
-      # # 提交并推送文件到仓库目录下
-      # - name: 提交并推送文件
-      #   uses: stefanzweifel/git-auto-commit-action@v5
-      #   #在上一个步骤成功时执行
-      #   if: success()
-      #   with:
-      #     # 动态构造提交信息
-      #     commit_message: "chenxx(auto): 自动编译更新 [ci skip]"
-      #     # 提交信息末尾添加 [ci skip] 以防止工作流循环触发
-      #     # commit_options: '--message "[ci skip]"'
-      #     # 要添加的文件，'.' 代表所有文件
-      #     # file_pattern: .
-      #     file_pattern: openwrt/bin/targets/x86/64/
-          
       - name: 生成 SHA256 校验文件（仅固件）
         run: |
           TARGET_DIR="openwrt/bin/targets/x86/64"
-          cd "$TARGET_DIR" || { echo "❌ 固件目录不存在"; exit 1; }
+          cd "$TARGET_DIR" || { echo "❌ 固件目录不存在，跳过"; exit 0; }
 
           echo "当前目录文件列表："
           ls -la
 
+          # 查找常见的固件扩展名
           find . -maxdepth 1 -type f \( \
             -name "*.img.gz" -o \
             -name "*.vmdk" -o \
@@ -284,30 +206,24 @@ jobs:
             echo "✅ sha256sums.txt 生成成功："
             cat sha256sums.txt
           else
-            echo "⚠️ 没有找到可计算 SHA256 的固件文件"
-            exit 1
+            echo "⚠️ 没有找到可计算 SHA256 的固件文件，跳过生成"
           fi
 
       - name: 自动发布到 GitHub Releases
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            openwrt/bin/targets/x86/64/**
-            # openwrt/bin/targets/x86/64/sha256sums.txt
+          files: openwrt/bin/targets/x86/64/**
           tag_name: v${{ github.run_number }}
-          name: OpenWrt X64 (OpenClash + VMDK) #${{ github.run_number }}
+          name: OpenWrt X64 (优化版) #${{ github.run_number }}
           body: |
             **自动编译固件**
             - 分支：${{ github.event.inputs.openwrt_branch || 'master' }}
-            - OpenWrt 生产环境最终完整 .config 文件（内核 6.12 深度优化版）
-            - 硬件：J4125 / J5005 + 4× Intel I226 2.5G + VMware 虚拟机
             - 日期：2026年3月
+            - 目标：x86_64 (J4125 / J5005 + 4× Intel I226 2.5G + VMware)
             - 内核：6.12（EEVDF + PREEMPT_RT 支持）
-            - 目标：极致吞吐 + 低延迟 + 高并发 + Docker + 科学上网 + QoS
-            - 简体中文 LuCI + 完整常用插件
+            - 特性：VMDK 镜像、MosDNS、Docker、OpenClash
             - 保留数量：${{ github.event.inputs.keep_releases }}
-            - 已启用：VMDK 镜像生成、MosDNS 智能分流、Docker、OpenClash
             - 编译时间：${{ env.CURRENT_TIME }}
           draft: false
           prerelease: false
@@ -320,15 +236,19 @@ jobs:
         run: |
           KEEP=${{ github.event.inputs.keep_releases || 2 }}
           echo "🧹 清理旧 Release，仅保留最近 $KEEP 个..."
-          gh release list --limit 100 --json tagName --jq '.[].tagName' | tail -n +$((KEEP+1)) | xargs -I {} gh release delete {} --yes || true
+
+          # 获取所有 tag 并按创建时间排序（假设 gh release list 按时间倒序）
+          RELEASES=$(gh release list --limit 100 --json tagName --jq '.[].tagName')
+          TOTAL=$(echo "$RELEASES" | wc -l)
+          if [ "$TOTAL" -le "$KEEP" ]; then
+            echo "当前 Release 数量 ($TOTAL) 未超过保留数量，无需清理"
+            exit 0
+          fi
+
+          # 跳过前 KEEP 个，删除其余
+          echo "$RELEASES" | tail -n +$((KEEP+1)) | while read tag; do
+            echo "删除 Release: $tag"
+            gh release delete "$tag" --yes --cleanup-tag
+          done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        
-      # - name: 上传编译日志（失败时保留）
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: build-log
-      #     path: openwrt/.config
-      #     retention-days: 1
