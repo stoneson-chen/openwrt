@@ -89,6 +89,8 @@ jobs:
             } > .config
           fi
           make defconfig
+          echo "生成后。config文件内容："
+          more .config
 
       - name: 循环验证并强制启用所有必需包
         run: |
