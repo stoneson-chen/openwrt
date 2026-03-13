@@ -28,10 +28,15 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  TZ: Asia/Shanghai
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 480
+    
 
     steps:
       - name: 获取当前时间
@@ -40,7 +45,9 @@ jobs:
           echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
           
       - name: 检出仓库代码
-        uses: actions/checkout@v4
+        # uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
+
     
       - name: 安装依赖 + ccache
         run: |
@@ -76,7 +83,7 @@ jobs:
           echo "src-git mosdns https://github.com/sbwml/luci-app-mosdns.git" >> feeds.conf.default
           
           # AdGuardHome
-          echo "src-git adguardhome https://github.com/rufengsuixing/luci-app-adguardhome.git" >> feeds.conf.default
+          echo "src-git adguardhome https://github.com/stevenjoezhang/luci-app-adguardhome.git" >> feeds.conf.default
           
           # Passwall packages (依赖库很全)，Docker Compose
           echo "src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git" >> feeds.conf.default
@@ -182,6 +189,8 @@ jobs:
           force_enable "theme-argon"               "y"
           force_enable "theme-openwrt-2020"        "y"
           force_enable "theme-openwrt"             "y"
+          force_enable "luci-app-kodexplorer"             "N"
+          
           echo "所有强制启用操作完成"
           echo "::endgroup::"
           
