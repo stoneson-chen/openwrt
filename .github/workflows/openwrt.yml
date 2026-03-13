@@ -176,7 +176,7 @@ jobs:
               fi
             done
 
-            make defconfig
+            # make defconfig
             attempt=$((attempt + 1))
           done
 
