@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev file wget \
-            qemu-utils ca-certificates xz-utils pigz
+            qemu-utils ca-certificates xz-utils pigz   # 移除 pxz（Ubuntu 24.04 已无此包）
 
       - name: 配置 ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
@@ -72,9 +72,11 @@ jobs:
           src-git lienol https://github.com/Lienol/openwrt-package.git
           EOF
 
-      - name: 复制配置文件并强制启用必要组件
+      - name: 更新 feeds 并生成基础配置
         run: |
           cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
           if [ -f "../config.openwrt.X64" ]; then
             cp "../config.openwrt.X64" .config
             echo "✅ 已加载 config.openwrt.X64"
@@ -86,54 +88,24 @@ jobs:
               echo "CONFIG_TARGET_x86_64_DEVICE_generic=y"
             } > .config
           fi
-
-          # 辅助函数：强制设置任意配置项
-          set_config() {
-            local entry="$1"
-            local key="${entry%%=*}"
-            local value="${entry#*=}"
-            if grep -q "^${key}=" .config; then
-              sed -i "s|^${key}=.*|${key}=${value}|" .config
-              echo "  → 已更新 ${key}=${value}"
-            elif grep -q "^# ${key} is not set" .config; then
-              sed -i "s|^# ${key} is not set|${key}=${value}|" .config
-              echo "  → 已启用（原注释） ${key}=${value}"
-            else
-              echo "${key}=${value}" >> .config
-              echo "  → 新增 ${key}=${value}"
-            fi
-          }
-
-          echo "::group::强制设置关键配置项"
-          set_config "CONFIG_PACKAGE_kmod-usb-printer=y"
-          set_config "CONFIG_PACKAGE_luci-mod-admin-full=y"
-          set_config "CONFIG_PACKAGE_theme-argon=y"
-          set_config "CONFIG_PACKAGE_theme-openwrt-2020=y"
-          set_config "CONFIG_PACKAGE_theme-openwrt=y"
-          set_config "CONFIG_PACKAGE_luci-app-kodexplorer=n"
-          echo "::endgroup::"
-
-          # 修改默认时区和 NTP 服务器
-          sed -i "s/set system\.\@system\[-1\]\.timezone='UTC'/set system.@system[-1].timezone='CST-8'/" ./package/base-files/files/bin/config_generate
-          sed -i "s/0\.openwrt\.pool\.ntp\.org/ntp1.aliyun.com/" ./package/base-files/files/bin/config_generate
-          sed -i "s/1\.openwrt\.pool\.ntp\.org/time1.cloud.tencent.com/" ./package/base-files/files/bin/config_generate
-          echo "net.netfilter.nf_conntrack_max=65535" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
-          echo "net.ipv4.ip_forward = 1" >> ./package/base-files/files/etc/sysctl.d/10-default.conf
-
-      - name: 更新 feeds 并生成配置
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
           make defconfig
 
-      - name: 验证并自动修复配置缺失项
+      - name: 循环验证并强制启用所有必需包
         run: |
           cd openwrt
           MAX_ATTEMPTS=3
           attempt=1
 
-          # 从仓库根目录读取原始配置
+          # 定义额外强制启用的包列表（可根据需要增删）
+          EXTRA_PACKAGES=(
+            "kmod-usb-printer=y"
+            "luci-mod-admin-full=y"
+            "theme-argon=y"
+            "theme-openwrt-2020=y"
+            "theme-openwrt=y"
+            # 如需添加其他，按 "包名=值" 格式填入
+          )
+
           CONFIG_FILE="$GITHUB_WORKSPACE/config.openwrt.X64"
 
           while [ $attempt -le $MAX_ATTEMPTS ]; do
@@ -141,24 +113,42 @@ jobs:
             MISSING=0
             MISSING_ITEMS=""
 
-            # 读取原始配置，检查每个 PACKAGE 项
-            while read line; do
-              [[ "$line" =~ ^[[:space:]]*# ]] && continue
-              [[ -z "$line" ]] && continue
-              if [[ "$line" =~ ^(CONFIG_PACKAGE_[^=]+)=(.*)$ ]]; then
-                key="${BASH_REMATCH[1]}"
-                val="${BASH_REMATCH[2]}"
-                if [[ "$val" == "y" || "$val" == "m" ]]; then
-                  if grep -q "^${key}=y" .config || grep -q "^${key}=m" .config; then
-                    echo "✅ $key 已启用 (值为 $(grep "^${key}=" .config | cut -d= -f2))"
-                  else
-                    echo "❌ $key 缺失 (期望 $val)"
-                    MISSING=1
-                    MISSING_ITEMS="$MISSING_ITEMS $key=$val"
+            # 从原始配置文件中检查 PACKAGE 项
+            if [ -f "$CONFIG_FILE" ]; then
+              while read line; do
+                [[ "$line" =~ ^[[:space:]]*# ]] && continue
+                [[ -z "$line" ]] && continue
+                if [[ "$line" =~ ^(CONFIG_PACKAGE_[^=]+)=(.*)$ ]]; then
+                  key="${BASH_REMATCH[1]}"
+                  val="${BASH_REMATCH[2]}"
+                  if [[ "$val" == "y" || "$val" == "m" ]]; then
+                    if grep -q "^${key}=y" .config || grep -q "^${key}=m" .config; then
+                      echo "✅ $key 已启用 (值为 $(grep "^${key}=" .config | cut -d= -f2))"
+                    else
+                      echo "❌ $key 缺失 (期望 $val)"
+                      MISSING=1
+                      # 记录时不带 CONFIG_ 前缀，供 scripts/config 使用
+                      config_opt="${key#CONFIG_}"
+                      MISSING_ITEMS="$MISSING_ITEMS $config_opt=$val"
+                    fi
                   fi
                 fi
+              done < "$CONFIG_FILE"
+            fi
+
+            # 检查额外强制启用的包
+            for pkg_entry in "${EXTRA_PACKAGES[@]}"; do
+              pkg_name="${pkg_entry%%=*}"
+              pkg_val="${pkg_entry#*=}"
+              key="CONFIG_PACKAGE_${pkg_name}"
+              if grep -q "^${key}=y" .config || grep -q "^${key}=m" .config; then
+                echo "✅ $key 已启用 (值为 $(grep "^${key}=" .config | cut -d= -f2))"
+              else
+                echo "❌ $key 缺失 (期望 $pkg_val) [额外强制项]"
+                MISSING=1
+                MISSING_ITEMS="$MISSING_ITEMS PACKAGE_${pkg_name}=$pkg_val"
               fi
-            done < "$CONFIG_FILE"
+            done
 
             if [ $MISSING -eq 0 ]; then
               echo "✅ 所有配置项均已正确启用"
@@ -173,10 +163,8 @@ jobs:
 
             echo "尝试重新启用缺失项 (使用 scripts/config)..."
             for item in $MISSING_ITEMS; do
-              key="${item%%=*}"
+              config_opt="${item%%=*}"
               val="${item#*=}"
-              # 移除 CONFIG_ 前缀，得到如 PACKAGE_xxx 的形式
-              config_opt="${key#CONFIG_}"
               echo "启用: $config_opt (设置为 $val)"
               if [ "$val" == "y" ]; then
                 ./scripts/config --enable "$config_opt"
@@ -185,7 +173,7 @@ jobs:
               fi
             done
 
-            # 重新生成配置
+            # 重新生成配置，解决新引入的依赖
             make defconfig
             attempt=$((attempt + 1))
           done
@@ -215,7 +203,7 @@ jobs:
             [[ -z "$line" ]] && continue
             if [[ "$line" =~ ^CONFIG_PACKAGE_([^=]+)=[ym]$ ]]; then
               pkg="${BASH_REMATCH[1]}"
-              # 检查是否存在对应包文件（扩展名可能是 .apk 或 .ipk）
+              # 同时兼容 .apk 和 .ipk 扩展名
               if ls ${pkg}_*.apk >/dev/null 2>&1 || ls ${pkg}_*.ipk >/dev/null 2>&1; then
                 echo "✅ ${pkg} 包已生成"
               else
