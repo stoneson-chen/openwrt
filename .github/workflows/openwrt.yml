@@ -58,7 +58,8 @@ jobs:
       - name: 克隆 OpenWrt 源码
         run: |
           BRANCH="${{ github.event.inputs.openwrt_branch || 'master' }}"
-          git clone --depth=1 https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
+          # git clone --depth=1 https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
+          git clone https://github.com/openwrt/openwrt.git -b $BRANCH openwrt
 
       - name: 添加第三方 feeds
         run: |
@@ -66,7 +67,7 @@ jobs:
           cat >> feeds.conf.default <<EOF
           src-git openclash https://github.com/vernesong/OpenClash.git
           src-git mosdns https://github.com/sbwml/luci-app-mosdns.git
-          src-git adguardhome https://github.com/stevenjoezhang/luci-app-adguardhome.git
+          # src-git adguardhome https://github.com/stevenjoezhang/luci-app-adguardhome.git
           src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git
           src-git helloworld https://github.com/fw876/helloworld.git
           src-git lienol https://github.com/Lienol/openwrt-package.git
@@ -75,6 +76,11 @@ jobs:
       - name: 更新 feeds 并生成基础配置
         run: |
           cd openwrt
+          # 删除导致递归依赖的包
+          rm -rf package/feeds/lienol/luci-app-kodexplorer
+          rm -rf package/feeds/lienol/luci-app-nginx-pingos
+          rm -rf package/feeds/packages/onionshare-cli
+          
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           if [ -f "../config.openwrt.X64" ]; then
@@ -88,6 +94,7 @@ jobs:
               echo "CONFIG_TARGET_x86_64_DEVICE_generic=y"
             } > .config
           fi
+          
           make defconfig
           echo "生成后。config文件内容："
           more .config
@@ -97,16 +104,6 @@ jobs:
           cd openwrt
           MAX_ATTEMPTS=3
           attempt=1
-
-          # 定义额外强制启用的包列表（可根据需要增删）
-          EXTRA_PACKAGES=(
-            "kmod-usb-printer=y"
-            "luci-mod-admin-full=y"
-            "theme-argon=y"
-            "theme-openwrt-2020=y"
-            "theme-openwrt=y"
-            # 如需添加其他，按 "包名=值" 格式填入
-          )
 
           CONFIG_FILE="$GITHUB_WORKSPACE/config.openwrt.X64"
 
@@ -137,20 +134,6 @@ jobs:
                 fi
               done < "$CONFIG_FILE"
             fi
-
-            # 检查额外强制启用的包
-            for pkg_entry in "${EXTRA_PACKAGES[@]}"; do
-              pkg_name="${pkg_entry%%=*}"
-              pkg_val="${pkg_entry#*=}"
-              key="CONFIG_PACKAGE_${pkg_name}"
-              if grep -q "^${key}=y" .config || grep -q "^${key}=m" .config; then
-                echo "✅ $key 已启用 (值为 $(grep "^${key}=" .config | cut -d= -f2))"
-              else
-                echo "❌ $key 缺失 (期望 $pkg_val) [额外强制项]"
-                MISSING=1
-                MISSING_ITEMS="$MISSING_ITEMS PACKAGE_${pkg_name}=$pkg_val"
-              fi
-            done
 
             if [ $MISSING -eq 0 ]; then
               echo "✅ 所有配置项均已正确启用"
