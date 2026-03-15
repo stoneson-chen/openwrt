@@ -32,12 +32,29 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: 获取当前时间
-        id: current_time
-        run: echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
+      # - name: 获取当前时间
+      #   id: current_time
+      #   run: echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
 
       - name: 检出仓库代码
         uses: actions/checkout@v4
+
+      - name: 获取 OpenWrt 源码更新日志
+        # 只有在需要发布时才执行
+        # if: github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true'
+        run: |
+          echo "CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
+          cd openwrt
+          git log -10 --pretty=format:"- %h - %s (%an)" --no-color
+          # 获取最近 10 条 commit 记录
+          # 格式：- 短哈希 - 提交说明 (作者)
+          # 使用 EOF 标记处理多行文本存入环境变量
+          {
+            echo "OPENWRT_CHANGELOG<<EOF"
+            git log -10 --pretty=format:"- %h - %s (%an)" --no-color
+            echo ""
+            echo "EOF"
+          } >> $GITHUB_ENV
 
       - name: 安装依赖
         run: |
